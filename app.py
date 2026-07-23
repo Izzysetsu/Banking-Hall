@@ -36,6 +36,15 @@ def get_media_type(filename):
         return 'video'
     return 'image'
 
+def ensure_supabase_bucket(supabase, bucket_name):
+    try:
+        supabase.storage.get_bucket(bucket_name)
+    except Exception:
+        try:
+            supabase.storage.create_bucket(bucket_name, options={'public': True})
+        except Exception:
+            pass
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -93,6 +102,9 @@ def api_upload():
                 file_bytes = file.read()
                 content_type = file.content_type or ('video/mp4' if media_type == 'video' else 'image/jpeg')
                 supabase = get_supabase_client()
+                
+                # Auto-ensure bucket exists
+                ensure_supabase_bucket(supabase, bucket)
                 
                 # Upload to Supabase Storage Bucket
                 supabase.storage.from_(bucket).upload(
