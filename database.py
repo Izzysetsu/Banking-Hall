@@ -53,10 +53,47 @@ def init_db():
     except Exception as e:
         print(f"SQLite init error: {e}")
 
+def sync_storage_to_db(supabase):
+    try:
+        bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
+        files = supabase.storage.from_(bucket).list()
+        if not files:
+            return
+
+        res = supabase.table('playlist').select('filename').execute()
+        existing_filenames = {item['filename'] for item in res.data} if res.data else set()
+
+        video_exts = {'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'}
+
+        for idx, f in enumerate(files):
+            fname = f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
+            if fname and fname not in existing_filenames and fname != '.emptyFolderPlaceholder':
+                ext = fname.rsplit('.', 1)[1].lower() if '.' in fname else ''
+                m_type = 'video' if ext in video_exts else 'image'
+                public_url = supabase.storage.from_(bucket).get_public_url(fname)
+
+                payload = {
+                    'filename': fname,
+                    'type': m_type,
+                    'url': public_url,
+                    'duration': 10,
+                    'animation': 'fade',
+                    'order_index': idx + 1
+                }
+                try:
+                    supabase.table('playlist').insert(payload).execute()
+                except Exception as insert_err:
+                    print(f"Sync insert warning: {insert_err}")
+    except Exception as e:
+        print(f"Auto-sync warning: {e}")
+
 def get_playlist():
     if is_supabase_enabled():
         supabase = get_supabase_client()
         try:
+            # Sync any orphan files in Supabase Storage to DB
+            sync_storage_to_db(supabase)
+
             res = supabase.table('playlist').select('*').order('order_index', desc=False).order('id', desc=False).execute()
             return res.data if res.data else []
         except Exception as e:
