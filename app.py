@@ -182,9 +182,15 @@ def api_get_playlist():
 @app.route('/api/playlist/update', methods=['POST'])
 @login_required
 def api_update_playlist():
-    data = request.json
+    data = request.json or []
     for item in data:
-        update_media(item['id'], item['duration'], item['animation'], item['order_index'])
+        update_media(
+            item.get('id'),
+            item.get('duration'),
+            item.get('animation'),
+            item.get('order_index'),
+            filename=item.get('filename')
+        )
     return jsonify({"status": "success"})
 
 @app.route('/api/media/add', methods=['POST'])
