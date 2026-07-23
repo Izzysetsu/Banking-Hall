@@ -25,14 +25,16 @@ try:
 except Exception:
     pass
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'ogg'}
+VIDEO_EXTENSIONS = {'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'}
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'heic', 'heif', 'tiff', 'ico'}
+ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS.union(VIDEO_EXTENSIONS)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_media_type(filename):
-    ext = filename.rsplit('.', 1)[1].lower()
-    if ext in {'mp4', 'webm', 'ogg'}:
+    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    if ext in VIDEO_EXTENSIONS:
         return 'video'
     return 'image'
 
@@ -124,7 +126,7 @@ def api_upload():
             add_media(filename, media_type)
             return jsonify({"status": "success", "filename": filename})
     
-    return jsonify({"error": "File type not allowed"}), 400
+    return jsonify({"error": "Format file tidak didukung. Harap gunakan format gambar (JPG, PNG, WEBP, GIF, dll) atau video (MP4, MOV, WEBM, AVI, MKV, dll)"}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
