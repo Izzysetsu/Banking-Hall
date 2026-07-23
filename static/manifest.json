@@ -1,0 +1,16 @@
+{
+  "name": "Banking Hall Display",
+  "short_name": "BH Display",
+  "description": "Aplikasi Slideshow untuk Banking Hall",
+  "start_url": "/",
+  "display": "fullscreen",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/static/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}

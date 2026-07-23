@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banking Hall - Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-building-columns"></i> Banking Hall
+            </div>
+            <ul class="nav-links">
+                <li class="active"><a href="#"><i class="fa-solid fa-layer-group"></i> Playlist</a></li>
+                <li><a href="/" target="_blank"><i class="fa-solid fa-tv"></i> Lihat Layar</a></li>
+            </ul>
+        </aside>
+
+        <main class="content">
+            <header class="topbar">
+                <h1>Dashboard Admin</h1>
+                <div class="user-profile">
+                    <img src="https://ui-avatars.com/api/?name=Admin&background=0D8ABC&color=fff" alt="Admin">
+                </div>
+            </header>
+
+            <section class="upload-section glass-panel">
+                <h2>Unggah Media Baru</h2>
+                <div class="upload-area" id="upload-area">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <p>Seret & Jatuhkan file di sini, atau klik untuk memilih file</p>
+                    <input type="file" id="file-input" accept="image/*,video/mp4,video/webm,video/ogg" style="display:none;">
+                </div>
+                <div id="upload-progress" style="display: none;">
+                    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                    <span id="progress-text">0%</span>
+                </div>
+            </section>
+
+            <section class="playlist-section glass-panel">
+                <div class="section-header">
+                    <h2>Manajemen Playlist</h2>
+                    <button class="btn btn-primary" id="save-btn"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="playlist-table">
+                        <thead>
+                            <tr>
+                                <th>Urutan</th>
+                                <th>Preview</th>
+                                <th>Tipe</th>
+                                <th>Durasi (detik)</th>
+                                <th>Animasi</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="playlist-body">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Notifikasi</div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>
