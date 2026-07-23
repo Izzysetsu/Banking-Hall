@@ -56,6 +56,15 @@ def admin():
     return render_template('admin.html')
 
 # API Endpoints
+@app.route('/api/config', methods=['GET'])
+def api_config():
+    return jsonify({
+        "supabase_enabled": is_supabase_enabled(),
+        "supabase_url": os.environ.get('SUPABASE_URL', ''),
+        "supabase_key": os.environ.get('SUPABASE_KEY', ''),
+        "supabase_bucket": (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
+    })
+
 @app.route('/api/playlist', methods=['GET'])
 def api_get_playlist():
     playlist = get_playlist()
@@ -67,6 +76,17 @@ def api_update_playlist():
     for item in data:
         update_media(item['id'], item['duration'], item['animation'], item['order_index'])
     return jsonify({"status": "success"})
+
+@app.route('/api/media/add', methods=['POST'])
+def api_add_media():
+    data = request.json or {}
+    filename = data.get('filename')
+    media_type = data.get('type', 'image')
+    url = data.get('url')
+    if filename:
+        add_media(filename, media_type, url=url)
+        return jsonify({"status": "success"})
+    return jsonify({"error": "Filename missing"}), 400
 
 @app.route('/api/playlist/delete/<path:item_id>', methods=['DELETE'])
 def api_delete_media(item_id):
@@ -82,7 +102,6 @@ def api_delete_media(item_id):
         if item and isinstance(item, dict):
             target_filename = item.get('filename')
 
-    # Fallback to search playlist items if filename was not retrieved from DB
     if not target_filename:
         current_list = get_playlist()
         for p in current_list:

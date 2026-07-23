@@ -9,6 +9,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const toast = document.getElementById('toast');
 
     let playlist = [];
+    let config = { supabase_enabled: false };
+
+    // Fetch config for direct browser-to-supabase upload
+    async function fetchConfig() {
+        try {
+            const res = await fetch('/api/config');
+            config = await res.json();
+        } catch (e) {
+            console.error('Error fetching config:', e);
+        }
+    }
 
     // Fetch and render
     async function fetchPlaylist() {
@@ -73,7 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
             playlist[index] = playlist[index-1];
             playlist[index-1] = temp;
             
-            // swap order_index
             const tempOrder = playlist[index].order_index;
             playlist[index].order_index = playlist[index-1].order_index;
             playlist[index-1].order_index = tempOrder;
@@ -88,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () => {
             playlist[index] = playlist[index+1];
             playlist[index+1] = temp;
             
-            // swap order_index
             const tempOrder = playlist[index].order_index;
             playlist[index].order_index = playlist[index+1].order_index;
             playlist[index+1].order_index = tempOrder;
@@ -109,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
     saveBtn.addEventListener('click', async () => {
         saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
         
-        // update order_index based on current array position before saving
         playlist.forEach((item, idx) => {
             item.order_index = idx;
         });
@@ -154,39 +162,99 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function uploadFile(file) {
-        const formData = new FormData();
-        formData.append('file', file);
+    function getMediaType(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'];
+        return videoExts.includes(ext) ? 'video' : 'image';
+    }
 
+    function uploadFile(file) {
         progressDiv.style.display = 'block';
         uploadArea.style.display = 'none';
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/upload', true);
+        if (config.supabase_enabled && config.supabase_url && config.supabase_key) {
+            // Direct browser to Supabase Storage upload (bypasses Vercel Serverless 4.5MB payload limit!)
+            const mediaType = getMediaType(file.name);
+            const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const filename = `${Math.floor(Date.now() / 1000)}_${safeName}`;
+            const bucket = config.supabase_bucket || 'playlist-media';
+            const uploadUrl = `${config.supabase_url.replace(/\/$/, '')}/storage/v1/object/${bucket}/${filename}`;
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', uploadUrl, true);
+            xhr.setRequestHeader('Authorization', `Bearer ${config.supabase_key}`);
+            xhr.setRequestHeader('apikey', config.supabase_key);
+            xhr.setRequestHeader('Content-Type', file.type || (mediaType === 'video' ? 'video/mp4' : 'image/jpeg'));
 
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-                progressFill.style.width = percent + '%';
-                progressText.innerText = percent + '%';
-            }
-        };
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    progressFill.style.width = percent + '%';
+                    progressText.innerText = percent + '%';
+                }
+            };
 
-        xhr.onload = () => {
-            progressDiv.style.display = 'none';
-            uploadArea.style.display = 'block';
-            progressFill.style.width = '0%';
-            fileInput.value = ''; // reset
+            xhr.onload = async () => {
+                progressDiv.style.display = 'none';
+                uploadArea.style.display = 'block';
+                progressFill.style.width = '0%';
+                fileInput.value = '';
 
-            if (xhr.status === 200) {
-                showToast('Upload berhasil!');
-                fetchPlaylist();
-            } else {
-                showToast('Upload gagal: ' + xhr.responseText);
-            }
-        };
+                if (xhr.status === 200 || xhr.status === 201) {
+                    const publicUrl = `${config.supabase_url.replace(/\/$/, '')}/storage/v1/object/public/${bucket}/${filename}`;
+                    await fetch('/api/media/add', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename, type: mediaType, url: publicUrl })
+                    });
+                    showToast('Upload berhasil!');
+                    fetchPlaylist();
+                } else {
+                    showToast('Upload gagal: ' + xhr.responseText);
+                }
+            };
 
-        xhr.send(formData);
+            xhr.onerror = () => {
+                progressDiv.style.display = 'none';
+                uploadArea.style.display = 'block';
+                progressFill.style.width = '0%';
+                fileInput.value = '';
+                showToast('Upload gagal karena koneksi terputus.');
+            };
+
+            xhr.send(file);
+        } else {
+            // Local fallback upload via FormData
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/upload', true);
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    progressFill.style.width = percent + '%';
+                    progressText.innerText = percent + '%';
+                }
+            };
+
+            xhr.onload = () => {
+                progressDiv.style.display = 'none';
+                uploadArea.style.display = 'block';
+                progressFill.style.width = '0%';
+                fileInput.value = '';
+
+                if (xhr.status === 200) {
+                    showToast('Upload berhasil!');
+                    fetchPlaylist();
+                } else {
+                    showToast('Upload gagal: ' + xhr.responseText);
+                }
+            };
+
+            xhr.send(formData);
+        }
     }
 
     function showToast(msg) {
@@ -198,5 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Init
+    fetchConfig();
     fetchPlaylist();
 });
