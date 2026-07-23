@@ -73,7 +73,7 @@ def api_delete_media(item_id):
         filename = item.get('filename') if isinstance(item, dict) else item
         if is_supabase_enabled():
             try:
-                bucket = os.environ.get('SUPABASE_BUCKET', 'playlist-media')
+                bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
                 supabase = get_supabase_client()
                 supabase.storage.from_(bucket).remove([filename])
             except Exception as e:
@@ -98,7 +98,7 @@ def api_upload():
         
         if is_supabase_enabled():
             try:
-                bucket = os.environ.get('SUPABASE_BUCKET', 'playlist-media')
+                bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
                 file_bytes = file.read()
                 content_type = file.content_type or ('video/mp4' if media_type == 'video' else 'image/jpeg')
                 supabase = get_supabase_client()
