@@ -1,0 +1,6 @@
+# Configuration for cPanel / Rumahweb Hosting
+# Membatasi ukuran maksimal upload file (500 MB)
+LimitRequestBody 524288000
+
+# Mengaktifkan rewrite engine
+RewriteEngine On
