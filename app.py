@@ -183,15 +183,19 @@ def api_get_playlist():
 @login_required
 def api_update_playlist():
     data = request.json or []
-    for item in data:
-        update_media(
-            item.get('id'),
-            item.get('duration'),
-            item.get('animation'),
-            item.get('order_index'),
-            filename=item.get('filename')
-        )
-    return jsonify({"status": "success"})
+    try:
+        for item in data:
+            update_media(
+                item.get('id'),
+                item.get('duration'),
+                item.get('animation'),
+                item.get('order_index'),
+                filename=item.get('filename')
+            )
+        return jsonify({"status": "success"})
+    except Exception as e:
+        app.logger.error(f"Error updating playlist: {e}")
+        return jsonify({"error": f"Gagal simpan ke Supabase DB: {str(e)}"}), 500
 
 @app.route('/api/media/add', methods=['POST'])
 @login_required

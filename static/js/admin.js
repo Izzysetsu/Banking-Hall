@@ -280,7 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Perubahan berhasil disimpan!');
             await fetchPlaylist();
         } else {
-            showToast('Gagal menyimpan perubahan.');
+            const errData = await res.json().catch(() => ({}));
+            showToast('Gagal menyimpan: ' + (errData.error || 'Terjadi kesalahan server'));
         }
         saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan';
     });

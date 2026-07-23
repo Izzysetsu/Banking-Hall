@@ -333,52 +333,44 @@ def update_media(item_id, duration, animation, order_index, filename=None):
 
     if is_supabase_enabled():
         supabase = get_supabase_client()
-        try:
-            payload = {
-                'duration': duration_val,
-                'animation': animation or 'fade',
-                'order_index': order_val
-            }
-            if filename:
+        payload = {
+            'duration': duration_val,
+            'animation': animation or 'fade',
+            'order_index': order_val
+        }
+
+        # 1. Try matching by filename first if provided
+        if filename:
+            res = supabase.table('playlist').select('id').eq('filename', filename).execute()
+            if res.data and len(res.data) > 0:
+                real_id = res.data[0]['id']
+                supabase.table('playlist').update(payload).eq('id', real_id).execute()
+                return True
+            else:
+                video_exts = {'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'}
+                ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
                 payload['filename'] = filename
+                payload['type'] = 'video' if ext in video_exts else 'image'
+                bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
+                payload['url'] = supabase.storage.from_(bucket).get_public_url(filename)
+                supabase.table('playlist').insert(payload).execute()
+                return True
 
-            # 1. Try matching by filename first if provided
-            if filename:
-                res = supabase.table('playlist').select('id').eq('filename', filename).execute()
-                if res.data and len(res.data) > 0:
-                    real_id = res.data[0]['id']
-                    supabase.table('playlist').update(payload).eq('id', real_id).execute()
-                    print(f"Supabase updated filename '{filename}' (id: {real_id}) duration={duration_val}")
-                    return
-                else:
-                    video_exts = {'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'}
-                    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-                    payload['type'] = 'video' if ext in video_exts else 'image'
-                    bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
-                    payload['url'] = supabase.storage.from_(bucket).get_public_url(filename)
-                    supabase.table('playlist').insert(payload).execute()
-                    print(f"Supabase inserted filename '{filename}' duration={duration_val}")
-                    return
+        # 2. Try updating by item_id
+        if item_id:
+            supabase.table('playlist').update(payload).eq('id', item_id).execute()
+            return True
 
-            # 2. Try updating by item_id
-            if item_id:
-                supabase.table('playlist').update(payload).eq('id', item_id).execute()
-                print(f"Supabase updated item_id '{item_id}' duration={duration_val}")
-                return
-        except Exception as e:
-            print(f"Supabase Update media error: {e}")
-        return
+        return False
 
-    try:
-        conn = get_db_connection()
-        conn.execute(
-            'UPDATE playlist SET duration = ?, animation = ?, order_index = ? WHERE id = ? OR filename = ?',
-            (duration_val, animation, order_val, item_id, filename)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"SQLite Update media error: {e}")
+    conn = get_db_connection()
+    conn.execute(
+        'UPDATE playlist SET duration = ?, animation = ?, order_index = ? WHERE id = ? OR filename = ?',
+        (duration_val, animation, order_val, item_id, filename)
+    )
+    conn.commit()
+    conn.close()
+    return True
 
 def delete_media(item_id):
     if is_supabase_enabled():
