@@ -255,8 +255,19 @@ document.addEventListener('DOMContentLoaded', () => {
     saveBtn.addEventListener('click', async () => {
         saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
         
-        playlist.forEach((item, idx) => {
-            item.order_index = idx;
+        const rows = playlistBody.querySelectorAll('tr');
+        rows.forEach((tr, idx) => {
+            if (playlist[idx]) {
+                playlist[idx].order_index = idx;
+                const durInput = tr.querySelector('input[type="number"]');
+                if (durInput && durInput.value) {
+                    playlist[idx].duration = parseInt(durInput.value, 10);
+                }
+                const animSelect = tr.querySelector('select');
+                if (animSelect && animSelect.value) {
+                    playlist[idx].animation = animSelect.value;
+                }
+            }
         });
 
         const res = await fetch('/api/playlist/update', {
@@ -267,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if(res.ok) {
             showToast('Perubahan berhasil disimpan!');
+            await fetchPlaylist();
         } else {
             showToast('Gagal menyimpan perubahan.');
         }

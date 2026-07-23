@@ -77,7 +77,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentElement = el;
 
         // Determine how long to wait before next slide
-        let durationMs = item.duration * 1000;
+        let parsedDuration = parseInt(item.duration, 10);
+        let durationMs = (!isNaN(parsedDuration) && parsedDuration > 0 ? parsedDuration : 10) * 1000;
         
         if (item.type === 'video') {
             // Tunggu sampai video benar-benar selesai
