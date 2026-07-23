@@ -5,14 +5,25 @@ from werkzeug.utils import secure_filename
 from database import init_db, get_playlist, add_media, update_media, delete_media, is_supabase_enabled, get_supabase_client
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+
+if os.environ.get('VERCEL'):
+    app.config['UPLOAD_FOLDER'] = os.path.join('/tmp', 'uploads')
+else:
+    app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB max limit
 
-# Ensure upload folder exists locally
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Ensure upload folder exists safely
+try:
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+except Exception:
+    pass
 
-# Initialize database
-init_db()
+# Initialize database safely
+try:
+    init_db()
+except Exception:
+    pass
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'ogg'}
 

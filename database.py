@@ -4,47 +4,54 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_PATH = 'database.sqlite'
-SUPABASE_URL = os.environ.get('SUPABASE_URL')
-SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
-
 def is_supabase_enabled():
-    return bool(SUPABASE_URL and SUPABASE_KEY and 'your-project-id' not in SUPABASE_URL and '...' not in SUPABASE_KEY)
+    url = os.environ.get('SUPABASE_URL', '')
+    key = os.environ.get('SUPABASE_KEY', '')
+    return bool(url and key and 'your-project-id' not in url and '...' not in key)
 
 def get_supabase_client():
     if is_supabase_enabled():
         from supabase import create_client
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
+        url = os.environ.get('SUPABASE_URL')
+        key = os.environ.get('SUPABASE_KEY')
+        return create_client(url, key)
     return None
 
+def get_db_path():
+    if os.environ.get('VERCEL'):
+        return '/tmp/database.sqlite'
+    return 'database.sqlite'
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
     if is_supabase_enabled():
-        # Using Supabase Cloud DB
         return
 
-    conn = get_db_connection()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS playlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT NOT NULL,
-            type TEXT NOT NULL,
-            url TEXT,
-            duration INTEGER DEFAULT 10,
-            animation TEXT DEFAULT 'fade',
-            order_index INTEGER DEFAULT 0
-        )
-    ''')
     try:
-        conn.execute('ALTER TABLE playlist ADD COLUMN url TEXT')
-    except sqlite3.OperationalError:
-        pass
-    conn.commit()
-    conn.close()
+        conn = get_db_connection()
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS playlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                type TEXT NOT NULL,
+                url TEXT,
+                duration INTEGER DEFAULT 10,
+                animation TEXT DEFAULT 'fade',
+                order_index INTEGER DEFAULT 0
+            )
+        ''')
+        try:
+            conn.execute('ALTER TABLE playlist ADD COLUMN url TEXT')
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"SQLite init error: {e}")
 
 def get_playlist():
     if is_supabase_enabled():
@@ -53,13 +60,17 @@ def get_playlist():
             res = supabase.table('playlist').select('*').order('order_index', desc=False).order('id', desc=False).execute()
             return res.data if res.data else []
         except Exception as e:
-            print(f"Supabase warning (bisa terjadi jika tabel/kolom belum dibuat): {e}")
+            print(f"Supabase warning: {e}")
             return []
 
-    conn = get_db_connection()
-    items = conn.execute('SELECT * FROM playlist ORDER BY order_index ASC, id ASC').fetchall()
-    conn.close()
-    return [dict(ix) for ix in items]
+    try:
+        conn = get_db_connection()
+        items = conn.execute('SELECT * FROM playlist ORDER BY order_index ASC, id ASC').fetchall()
+        conn.close()
+        return [dict(ix) for ix in items]
+    except Exception as e:
+        print(f"SQLite get_playlist error: {e}")
+        return []
 
 def add_media(filename, media_type, url=None):
     if is_supabase_enabled():
