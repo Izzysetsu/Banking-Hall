@@ -1,6 +1,7 @@
 import sqlite3
 import os
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
@@ -29,6 +30,7 @@ def get_db_connection():
 
 def init_db():
     if is_supabase_enabled():
+        ensure_default_users_supabase()
         return
 
     try:
@@ -48,11 +50,150 @@ def init_db():
             conn.execute('ALTER TABLE playlist ADD COLUMN url TEXT')
         except sqlite3.OperationalError:
             pass
+
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'admin',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         conn.commit()
         conn.close()
+
+        ensure_default_users_sqlite()
     except Exception as e:
         print(f"SQLite init error: {e}")
 
+def ensure_default_users_sqlite():
+    try:
+        conn = get_db_connection()
+        count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
+        if count == 0:
+            default_pass = generate_password_hash('admin123')
+            conn.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', ('admin1', default_pass, 'admin'))
+            conn.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', ('admin2', default_pass, 'admin'))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error ensuring default users in SQLite: {e}")
+
+def ensure_default_users_supabase():
+    try:
+        supabase = get_supabase_client()
+        res = supabase.table('users').select('id').limit(1).execute()
+        if not res.data:
+            default_pass = generate_password_hash('admin123')
+            supabase.table('users').insert([
+                {'username': 'admin1', 'password_hash': default_pass, 'role': 'admin'},
+                {'username': 'admin2', 'password_hash': default_pass, 'role': 'admin'}
+            ]).execute()
+    except Exception as e:
+        print(f"Error ensuring default users in Supabase: {e}")
+
+# USER CRUD FUNCTIONS
+def get_user_by_username(username):
+    if is_supabase_enabled():
+        supabase = get_supabase_client()
+        try:
+            res = supabase.table('users').select('*').eq('username', username).execute()
+            return res.data[0] if res.data and len(res.data) > 0 else None
+        except Exception as e:
+            print(f"Supabase get_user_by_username error: {e}")
+            return None
+
+    try:
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        conn.close()
+        return dict(user) if user else None
+    except Exception as e:
+        print(f"SQLite get_user_by_username error: {e}")
+        return None
+
+def get_user_by_id(user_id):
+    if is_supabase_enabled():
+        supabase = get_supabase_client()
+        try:
+            res = supabase.table('users').select('*').eq('id', user_id).execute()
+            return res.data[0] if res.data and len(res.data) > 0 else None
+        except Exception as e:
+            print(f"Supabase get_user_by_id error: {e}")
+            return None
+
+    try:
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        conn.close()
+        return dict(user) if user else None
+    except Exception as e:
+        print(f"SQLite get_user_by_id error: {e}")
+        return None
+
+def get_all_users():
+    if is_supabase_enabled():
+        supabase = get_supabase_client()
+        try:
+            res = supabase.table('users').select('id, username, role, created_at').order('id', desc=False).execute()
+            return res.data if res.data else []
+        except Exception as e:
+            print(f"Supabase get_all_users error: {e}")
+            return []
+
+    try:
+        conn = get_db_connection()
+        users = conn.execute('SELECT id, username, role, created_at FROM users ORDER BY id ASC').fetchall()
+        conn.close()
+        return [dict(u) for u in users]
+    except Exception as e:
+        print(f"SQLite get_all_users error: {e}")
+        return []
+
+def create_user(username, password_hash, role='admin'):
+    if is_supabase_enabled():
+        supabase = get_supabase_client()
+        res = supabase.table('users').insert({
+            'username': username,
+            'password_hash': password_hash,
+            'role': role
+        }).execute()
+        return res.data[0] if res.data else None
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', (username, password_hash, role))
+    conn.commit()
+    new_id = cursor.lastrowid
+    conn.close()
+    return get_user_by_id(new_id)
+
+def reset_user_password(user_id, new_password_hash):
+    if is_supabase_enabled():
+        supabase = get_supabase_client()
+        supabase.table('users').update({'password_hash': new_password_hash}).eq('id', user_id).execute()
+        return True
+
+    conn = get_db_connection()
+    conn.execute('UPDATE users SET password_hash = ? WHERE id = ?', (new_password_hash, user_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def delete_user(user_id):
+    if is_supabase_enabled():
+        supabase = get_supabase_client()
+        supabase.table('users').delete().eq('id', user_id).execute()
+        return True
+
+    conn = get_db_connection()
+    conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+# PLAYLIST FUNCTIONS
 def get_playlist_from_storage(supabase):
     try:
         bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
@@ -125,16 +266,13 @@ def get_playlist():
     if is_supabase_enabled():
         supabase = get_supabase_client()
         try:
-            # Sync any files in storage to DB
             sync_storage_to_db(supabase)
-
             res = supabase.table('playlist').select('*').order('order_index', desc=False).order('id', desc=False).execute()
             if res.data and len(res.data) > 0:
                 return res.data
         except Exception as e:
             print(f"Supabase DB query error: {e}")
 
-        # Fallback: Read directly from Supabase Storage bucket
         return get_playlist_from_storage(supabase)
 
     try:
@@ -168,7 +306,7 @@ def add_media(filename, media_type, url=None):
         try:
             supabase.table('playlist').insert(payload).execute()
         except Exception as e:
-            print(f"Database insert warning (file uploaded to storage OK): {e}")
+            print(f"Database insert warning: {e}")
         return
 
     conn = get_db_connection()

@@ -5,13 +5,151 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
     const playlistBody = document.getElementById('playlist-body');
+    const usersBody = document.getElementById('users-body');
     const saveBtn = document.getElementById('save-btn');
     const toast = document.getElementById('toast');
 
     let playlist = [];
+    let usersList = [];
     let config = { supabase_enabled: false };
 
-    // Fetch config for direct browser-to-supabase upload
+    // Tab Navigation
+    window.switchTab = (tabName) => {
+        document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.nav-links li').forEach(el => el.classList.remove('active'));
+
+        if (tabName === 'playlist') {
+            document.getElementById('tab-playlist').style.display = 'block';
+            document.getElementById('nav-playlist').classList.add('active');
+            document.getElementById('page-title').innerText = 'Dashboard Admin - Playlist';
+        } else if (tabName === 'users') {
+            document.getElementById('tab-users').style.display = 'block';
+            document.getElementById('nav-users').classList.add('active');
+            document.getElementById('page-title').innerText = 'Dashboard Admin - Manajemen User';
+            fetchUsers();
+        }
+    };
+
+    // Modal Helpers
+    window.openModal = (modalId) => {
+        document.getElementById(modalId).style.display = 'flex';
+    };
+
+    window.closeModal = (modalId) => {
+        document.getElementById(modalId).style.display = 'none';
+    };
+
+    // USER MANAGEMENT LOGIC
+    async function fetchUsers() {
+        try {
+            const res = await fetch('/api/users');
+            if (res.ok) {
+                usersList = await res.json();
+                renderUsers();
+            } else if (res.status === 401) {
+                window.location.href = '/login';
+            }
+        } catch (err) {
+            console.error('Error fetching users:', err);
+        }
+    }
+
+    function renderUsers() {
+        if (!usersBody) return;
+        usersBody.innerHTML = '';
+        usersList.forEach(u => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>#${u.id}</td>
+                <td><strong>${u.username}</strong></td>
+                <td><span class="user-role">${u.role || 'admin'}</span></td>
+                <td>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-secondary" onclick="openResetModal(${u.id}, '${u.username}')" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"><i class="fa-solid fa-key"></i> Reset Password</button>
+                        <button class="btn btn-danger" onclick="deleteUserAccount(${u.id}, '${u.username}')" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"><i class="fa-solid fa-trash"></i> Hapus</button>
+                    </div>
+                </td>
+            `;
+            usersBody.appendChild(tr);
+        });
+    }
+
+    window.openAddUserModal = () => {
+        document.getElementById('new-username').value = '';
+        document.getElementById('new-password').value = '';
+        openModal('modal-add-user');
+    };
+
+    window.submitAddUser = async () => {
+        const username = document.getElementById('new-username').value.trim();
+        const password = document.getElementById('new-password').value.trim();
+
+        if (!username || !password) {
+            showToast('Username dan password wajib diisi!');
+            return;
+        }
+
+        const res = await fetch('/api/users/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            showToast('User admin baru berhasil ditambahkan!');
+            closeModal('modal-add-user');
+            fetchUsers();
+        } else {
+            showToast('Gagal: ' + (data.error || 'Terjadi kesalahan'));
+        }
+    };
+
+    window.openResetModal = (id, username) => {
+        document.getElementById('reset-user-id').value = id;
+        document.getElementById('reset-username-label').innerText = username;
+        document.getElementById('reset-new-password').value = '';
+        openModal('modal-reset-password');
+    };
+
+    window.submitResetPassword = async () => {
+        const user_id = document.getElementById('reset-user-id').value;
+        const new_password = document.getElementById('reset-new-password').value.trim();
+
+        if (!new_password) {
+            showToast('Password baru tidak boleh kosong!');
+            return;
+        }
+
+        const res = await fetch('/api/users/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id, new_password })
+        });
+
+        if (res.ok) {
+            showToast('Password berhasil di-reset!');
+            closeModal('modal-reset-password');
+        } else {
+            const data = await res.json();
+            showToast('Gagal: ' + (data.error || 'Terjadi kesalahan'));
+        }
+    };
+
+    window.deleteUserAccount = async (id, username) => {
+        if (confirm(`Yakin ingin menghapus akun admin "${username}"?`)) {
+            const res = await fetch(`/api/users/delete/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (res.ok) {
+                showToast(`User ${username} berhasil dihapus!`);
+                fetchUsers();
+            } else {
+                showToast('Gagal menghapus: ' + (data.error || 'Terjadi kesalahan'));
+            }
+        }
+    };
+
+    // CONFIG & PLAYLIST LOGIC
     async function fetchConfig() {
         try {
             const res = await fetch('/api/config');
@@ -21,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Fetch and render
     async function fetchPlaylist() {
         const res = await fetch('/api/playlist');
         playlist = await res.json();
@@ -137,30 +274,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Upload Logic
-    uploadArea.addEventListener('click', () => fileInput.click());
-    
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-    
-    uploadArea.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('dragover');
-    });
+    if (uploadArea) {
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
 
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-        if(e.dataTransfer.files.length) {
-            uploadFile(e.dataTransfer.files[0]);
-        }
-    });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if(e.dataTransfer.files.length) {
+                uploadFile(e.dataTransfer.files[0]);
+            }
+        });
 
-    fileInput.addEventListener('change', (e) => {
-        if(e.target.files.length) {
-            uploadFile(e.target.files[0]);
-        }
-    });
+        fileInput.addEventListener('change', (e) => {
+            if(e.target.files.length) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+    }
 
     function getMediaType(filename) {
         const ext = filename.split('.').pop().toLowerCase();
@@ -173,7 +312,6 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadArea.style.display = 'none';
 
         if (config.supabase_enabled && config.supabase_url && config.supabase_key) {
-            // Direct browser to Supabase Storage upload (bypasses Vercel Serverless 4.5MB payload limit!)
             const mediaType = getMediaType(file.name);
             const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
             const filename = `${Math.floor(Date.now() / 1000)}_${safeName}`;
@@ -224,7 +362,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             xhr.send(file);
         } else {
-            // Local fallback upload via FormData
             const formData = new FormData();
             formData.append('file', file);
 
