@@ -53,6 +53,37 @@ def init_db():
     except Exception as e:
         print(f"SQLite init error: {e}")
 
+def get_playlist_from_storage(supabase):
+    try:
+        bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
+        files = supabase.storage.from_(bucket).list()
+        if not files:
+            return []
+
+        video_exts = {'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'}
+        items = []
+
+        for idx, f in enumerate(files):
+            fname = f.get('name') if isinstance(f, dict) else getattr(f, 'name', None)
+            if fname and fname != '.emptyFolderPlaceholder':
+                ext = fname.rsplit('.', 1)[1].lower() if '.' in fname else ''
+                m_type = 'video' if ext in video_exts else 'image'
+                public_url = supabase.storage.from_(bucket).get_public_url(fname)
+
+                items.append({
+                    'id': idx + 1,
+                    'filename': fname,
+                    'type': m_type,
+                    'url': public_url,
+                    'duration': 10,
+                    'animation': 'fade',
+                    'order_index': idx + 1
+                })
+        return items
+    except Exception as e:
+        print(f"Storage fallback error: {e}")
+        return []
+
 def sync_storage_to_db(supabase):
     try:
         bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
@@ -60,8 +91,11 @@ def sync_storage_to_db(supabase):
         if not files:
             return
 
-        res = supabase.table('playlist').select('filename').execute()
-        existing_filenames = {item['filename'] for item in res.data} if res.data else set()
+        try:
+            res = supabase.table('playlist').select('filename').execute()
+            existing_filenames = {item['filename'] for item in res.data} if res.data else set()
+        except Exception:
+            existing_filenames = set()
 
         video_exts = {'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', '3gp', 'flv', 'wmv', 'ts'}
 
@@ -91,14 +125,17 @@ def get_playlist():
     if is_supabase_enabled():
         supabase = get_supabase_client()
         try:
-            # Sync any orphan files in Supabase Storage to DB
+            # Sync any files in storage to DB
             sync_storage_to_db(supabase)
 
             res = supabase.table('playlist').select('*').order('order_index', desc=False).order('id', desc=False).execute()
-            return res.data if res.data else []
+            if res.data and len(res.data) > 0:
+                return res.data
         except Exception as e:
-            print(f"Supabase warning: {e}")
-            return []
+            print(f"Supabase DB query error: {e}")
+
+        # Fallback: Read directly from Supabase Storage bucket
+        return get_playlist_from_storage(supabase)
 
     try:
         conn = get_db_connection()
@@ -128,7 +165,10 @@ def add_media(filename, media_type, url=None):
         if url:
             payload['url'] = url
 
-        supabase.table('playlist').insert(payload).execute()
+        try:
+            supabase.table('playlist').insert(payload).execute()
+        except Exception as e:
+            print(f"Database insert warning (file uploaded to storage OK): {e}")
         return
 
     conn = get_db_connection()
@@ -145,11 +185,14 @@ def add_media(filename, media_type, url=None):
 def update_media(item_id, duration, animation, order_index):
     if is_supabase_enabled():
         supabase = get_supabase_client()
-        supabase.table('playlist').update({
-            'duration': duration,
-            'animation': animation,
-            'order_index': order_index
-        }).eq('id', item_id).execute()
+        try:
+            supabase.table('playlist').update({
+                'duration': duration,
+                'animation': animation,
+                'order_index': order_index
+            }).eq('id', item_id).execute()
+        except Exception as e:
+            print(f"Update media warning: {e}")
         return
 
     conn = get_db_connection()
@@ -163,11 +206,14 @@ def update_media(item_id, duration, animation, order_index):
 def delete_media(item_id):
     if is_supabase_enabled():
         supabase = get_supabase_client()
-        res = supabase.table('playlist').select('*').eq('id', item_id).execute()
-        if res.data and len(res.data) > 0:
-            item = res.data[0]
-            supabase.table('playlist').delete().eq('id', item_id).execute()
-            return item
+        try:
+            res = supabase.table('playlist').select('*').eq('id', item_id).execute()
+            if res.data and len(res.data) > 0:
+                item = res.data[0]
+                supabase.table('playlist').delete().eq('id', item_id).execute()
+                return item
+        except Exception as e:
+            print(f"Delete media DB warning: {e}")
         return None
 
     conn = get_db_connection()
