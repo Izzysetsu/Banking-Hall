@@ -68,23 +68,49 @@ def api_update_playlist():
         update_media(item['id'], item['duration'], item['animation'], item['order_index'])
     return jsonify({"status": "success"})
 
-@app.route('/api/playlist/delete/<int:item_id>', methods=['DELETE'])
+@app.route('/api/playlist/delete/<path:item_id>', methods=['DELETE'])
 def api_delete_media(item_id):
-    item = delete_media(item_id)
-    if item:
-        filename = item.get('filename') if isinstance(item, dict) else item
+    try:
+        numeric_id = int(item_id)
+    except ValueError:
+        numeric_id = None
+
+    target_filename = None
+
+    if numeric_id is not None:
+        item = delete_media(numeric_id)
+        if item and isinstance(item, dict):
+            target_filename = item.get('filename')
+
+    # Fallback to search playlist items if filename was not retrieved from DB
+    if not target_filename:
+        current_list = get_playlist()
+        for p in current_list:
+            if str(p.get('id')) == str(item_id) or p.get('filename') == str(item_id):
+                target_filename = p.get('filename')
+                if numeric_id is not None:
+                    delete_media(numeric_id)
+                break
+
+    if not target_filename and '.' in str(item_id):
+        target_filename = str(item_id)
+
+    if target_filename:
         if is_supabase_enabled():
             try:
                 bucket = (os.environ.get('SUPABASE_BUCKET') or 'playlist-media').strip()
                 supabase = get_supabase_client()
-                supabase.storage.from_(bucket).remove([filename])
+                supabase.storage.from_(bucket).remove([target_filename])
             except Exception as e:
                 app.logger.error(f"Error removing file from Supabase storage: {e}")
         else:
-            if filename:
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                if os.path.exists(filepath):
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], target_filename)
+            if os.path.exists(filepath):
+                try:
                     os.remove(filepath)
+                except Exception:
+                    pass
+
     return jsonify({"status": "success"})
 
 @app.route('/api/upload', methods=['POST'])
@@ -105,10 +131,8 @@ def api_upload():
                 content_type = file.content_type or ('video/mp4' if media_type == 'video' else 'image/jpeg')
                 supabase = get_supabase_client()
                 
-                # Auto-ensure bucket exists
                 ensure_supabase_bucket(supabase, bucket)
                 
-                # Upload to Supabase Storage Bucket
                 supabase.storage.from_(bucket).upload(
                     path=filename,
                     file=file_bytes,
@@ -126,7 +150,7 @@ def api_upload():
             add_media(filename, media_type)
             return jsonify({"status": "success", "filename": filename})
     
-    return jsonify({"error": "Format file tidak didukung. Harap gunakan format gambar (JPG, PNG, WEBP, GIF, dll) atau video (MP4, MOV, WEBM, AVI, MKV, dll)"}), 400
+    return jsonify({"error": "Format file tidak didukung"}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

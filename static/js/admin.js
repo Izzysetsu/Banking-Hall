@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </select>
                 </td>
                 <td>
-                    <button class="btn-icon btn-danger" onclick="deleteItem(${item.id})"><i class="fa-solid fa-trash"></i></button>
+                    <button class="btn-icon btn-danger" onclick="deleteItem('${item.id}', '${item.filename}')"><i class="fa-solid fa-trash"></i></button>
                 </td>
             `;
             playlistBody.appendChild(tr);
@@ -97,9 +97,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.deleteItem = async (id) => {
+    window.deleteItem = async (id, filename) => {
         if(confirm('Yakin ingin menghapus media ini?')) {
-            await fetch(`/api/playlist/delete/${id}`, { method: 'DELETE' });
+            const target = filename || id;
+            await fetch(`/api/playlist/delete/${encodeURIComponent(target)}`, { method: 'DELETE' });
             showToast('Media berhasil dihapus');
             fetchPlaylist();
         }
